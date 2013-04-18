@@ -16,6 +16,8 @@ GLint phi = 0;
 GLint theta = 0;
 
 int size = 64;
+int zoom = 0;
+int height = 0;
 
 // Shader
 GLuint program;
@@ -33,7 +35,7 @@ void display() {
   // Modeling transformation
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-  gluLookAt(0.0, 0.0, -20.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+  gluLookAt(0.0, 0.0 + height, -20.0 + zoom, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
   glTranslatef(0.0, 0.0, -3);
   glRotated(phi,1,0,0);
   glRotated(theta,0,1,0);
@@ -98,6 +100,18 @@ void keyboard (unsigned char key, int x, int y)
       glUseProgram(program);
     program_on = !program_on;
     break;
+  case '+':
+    zoom++;
+    break;
+  case '-':
+    zoom--;
+    break;
+  case 'u':
+    height++;
+    break;
+  case 'o':
+    height--;
+    break;
   case 'q':
     exit(0);
   default:
@@ -134,44 +148,49 @@ void buildWater(int size) {
 
     int vertSize = size*size*3;
     int indSize = vertSize*2;
-    GLfloat* verticies = new GLfloat[vertSize];
-    GLuint* indicies = new GLuint[indSize];
+    GLfloat* verticies;
+    verticies = new GLfloat[vertSize];
+    GLuint* indicies;
+    indicies = new GLuint[indSize];
     int vertCount = 0;
-    for (int i = -size/2; i <= size/2; i++) {
-        for (int j = -size/2; j <= size/2; j++) {
-            verticies[vertCount]   = i;
+    for (int i = -size/2; i < size/2; i++) {
+        for (int j = -size/2; j < size/2; j++) {
+            verticies[vertCount]   = j;
             verticies[vertCount+1] = 0;
-            verticies[vertCount+2] = j;
+            verticies[vertCount+2] = i;
             vertCount += 3;
         }
     }
 
     int squareCount = 0;
-    for (int k = 0; k < indSize; k += 6) {
-        // Calculate vertex indexes for current square
-        int v[4];
-        v[0] = squareCount + squareCount / size;
-        v[1] = v[0] + 1;
-        v[2] = v[1] + size;
-        v[3] = v[2] + 1;
+    //for (int k = 0; k < indSize; k += 6) {
+        //// Calculate vertex indexes for current square
+        //int v[4];
+        //v[0] = squareCount + squareCount / size;
+        //v[1] = v[0] + 1;
+        //v[2] = v[1] + size;
+        //v[3] = v[2] + 1;
 
-        // place vertex indicies in array for lookup
-        // triangles in ccw winding
-        indicies[k]   = v[1];
-        indicies[k+1] = v[0];
-        indicies[k+2] = v[2];
-        indicies[k+3] = v[2];
-        indicies[k+4] = v[3];
-        indicies[k+5] = v[1];
+        //// place vertex indicies in array for lookup
+        //// triangles in ccw winding
+        //indicies[k]   = v[1];
+        //indicies[k+1] = v[0];
+        //indicies[k+2] = v[2];
+        //indicies[k+3] = v[2];
+        //indicies[k+4] = v[3];
+        //indicies[k+5] = v[1];
 
-        squareCount++;
-    }
+        //squareCount++;
+    //}
 
     glBindBufferARB(GL_ARRAY_BUFFER_ARB, bufferIds[0]);
     glBufferDataARB(GL_ARRAY_BUFFER_ARB, vertSize, verticies, GL_STATIC_DRAW_ARB);
 
     glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB, bufferIds[1]);
     glBufferDataARB(GL_ELEMENT_ARRAY_BUFFER_ARB, indSize, indicies, GL_STATIC_DRAW_ARB);
+
+    delete[] verticies;
+    delete[] indicies;
 }
 
 void init() {

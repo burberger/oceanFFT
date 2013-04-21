@@ -15,7 +15,7 @@
 GLint phi = 0;
 GLint theta = 0;
 
-int size = 64;
+int size = 4;
 int zoom = 0;
 int height = 0;
 
@@ -56,7 +56,7 @@ void display() {
   glEnableClientState(GL_VERTEX_ARRAY);
   glVertexPointer(3, GL_FLOAT, 0, 0);
 
-  glDrawElements(GL_TRIANGLES, size*size*6, GL_UNSIGNED_BYTE, 0);
+  glDrawElements(GL_TRIANGLE_STRIP, size*size*6, GL_UNSIGNED_BYTE, 0);
 
   glDisableClientState(GL_VERTEX_ARRAY);
 
@@ -117,6 +117,7 @@ void keyboard (unsigned char key, int x, int y)
   default:
     return;
   }
+  x = y;
   glutPostRedisplay();
 }
 
@@ -131,7 +132,7 @@ void reshape(int w, int h)
   glViewport(0,0,w,h);
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluPerspective(60.0, (GLfloat) w / (GLfloat) h, 1.0, 200.0);
+  gluPerspective(60.0, (GLfloat) w / (GLfloat) h, 0.1, 200.0);
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 }
@@ -143,45 +144,35 @@ void idle(void)
   glutPostRedisplay();
 }
 
+float sizeX = 40.0f, sizeZ = 40.0f;
+
 // Generates a square vertex map for the water and copies it to the graphics card
 void buildWater(int size) {
-
     int vertSize = size*size*3;
-    int indSize = vertSize*2;
-    GLfloat* verticies;
-    verticies = new GLfloat[vertSize];
-    GLuint* indicies;
-    indicies = new GLuint[indSize];
-    int vertCount = 0;
-    for (int i = -size/2; i < size/2; i++) {
-        for (int j = -size/2; j < size/2; j++) {
-            verticies[vertCount]   = j;
-            verticies[vertCount+1] = 0;
-            verticies[vertCount+2] = i;
-            vertCount += 3;
-        }
+    // number of triangles + 3 for each row (2 for first triangle, 1 for row end marker) - 1 for overcount
+    int indSize = (size*size*2) + (3 * size) - 1;
+
+    GLfloat* verticies = new GLfloat[vertSize];
+    GLuint* indicies = new GLuint[indSize];
+    // Calculate vertex positions from defined size limits
+    // This will fit specified square count in defined size
+    for (int i = 0; i < vertSize; i += 3) {
+        int curVert = i / 3;
+        // determine what row we're on and generate square location
+        float x = float(curVert % size);
+        float z = float(curVert / size);
+        // generate vertex within some portion of coordinate boundaries
+        verticies[i] = -sizeX / 2 + sizeX*x / float(size - 1);
+        verticies[i+1] = -5; // Fixed height, real height controlled by shader
+        verticies[i+2] = sizeZ / 2 + sizeZ*z / float(size - 1);
     }
 
-    int squareCount = 0;
-    //for (int k = 0; k < indSize; k += 6) {
-        //// Calculate vertex indexes for current square
-        //int v[4];
-        //v[0] = squareCount + squareCount / size;
-        //v[1] = v[0] + 1;
-        //v[2] = v[1] + size;
-        //v[3] = v[2] + 1;
-
-        //// place vertex indicies in array for lookup
-        //// triangles in ccw winding
-        //indicies[k]   = v[1];
-        //indicies[k+1] = v[0];
-        //indicies[k+2] = v[2];
-        //indicies[k+3] = v[2];
-        //indicies[k+4] = v[3];
-        //indicies[k+5] = v[1];
-
-        //squareCount++;
-    //}
+    
+    for (int j = 0; j < size; j++) {
+        for (int k = 0; k < (size*2) + 2; k++) {
+            
+        }
+    }
 
     glBindBufferARB(GL_ARRAY_BUFFER_ARB, bufferIds[0]);
     glBufferDataARB(GL_ARRAY_BUFFER_ARB, vertSize, verticies, GL_STATIC_DRAW_ARB);
@@ -199,6 +190,7 @@ void init() {
   // Simple Lighting
   glEnable(GL_LIGHTING);
   glEnable(GL_LIGHT0);
+  glEnable(GL_PRIMITIVE_RESTART);
   glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
   glGenBuffersARB(2, bufferIds);
 }

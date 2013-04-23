@@ -144,6 +144,7 @@ void idle(void)
   glutPostRedisplay();
 }
 
+// Fixed quad map length and width, regardless of square resolution
 float sizeX = 40.0f, sizeZ = 40.0f;
 
 // Generates a square vertex map for the water and copies it to the graphics card

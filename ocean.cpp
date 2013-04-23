@@ -11,6 +11,8 @@
 
 #include "shader-load.h"
 
+using namespace std;
+
 // Rotation angles
 GLint phi = 0;
 GLint theta = 0;
@@ -117,7 +119,7 @@ void keyboard (unsigned char key, int x, int y)
   default:
     return;
   }
-  x = y;
+  x = y; // shuts up the automatic warning system, clean me up before submitting
   glutPostRedisplay();
 }
 
@@ -169,10 +171,21 @@ void buildWater(int size) {
     }
 
     
-    for (int j = 0; j < size; j++) {
-        for (int k = 0; k < (size*2) + 2; k++) {
-            
+    int indCount = 0; 
+    int rowCount = 0;
+    for (int j = 0; j < vertSize - size * 3; j++) {
+        if (indCount == (size * 2 + 2)) {
+            indicies[indCount + 1] = size + 1;
+            rowCount++;
+        } else {
+            int tmp = j - rowCount;
+            indicies[indCount] = tmp;
+            indicies[indCount+1] = tmp + 4;
         }
+        if (indCount == indSize) {
+            cout << "Index counter too big" << endl;
+        }
+        indCount += 2;
     }
 
     glBindBufferARB(GL_ARRAY_BUFFER_ARB, bufferIds[0]);
@@ -212,7 +225,7 @@ int main(int argc, char** argv)
 
   // Make window
   glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
-  glutCreateWindow("Shader Tester");
+  glutCreateWindow("Ocean View");
 
   // Initialize extensions manager and set up shaders
   glewInit();

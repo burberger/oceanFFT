@@ -152,8 +152,7 @@ float sizeX = 40.0f, sizeZ = 40.0f;
 // Generates a square vertex map for the water and copies it to the graphics card
 void buildWater(int size) {
     int vertSize = size*size*3;
-    // number of triangles + 3 for each row (2 for first triangle, 1 for row end marker) - 1 for overcount
-    int indSize = (size*size*2) + (3 * size) - 1;
+    int indSize = (2*size+1)*(size - 1) - 1;
 
     GLfloat* verticies = new GLfloat[vertSize];
     GLuint* indicies = new GLuint[indSize];
@@ -170,23 +169,26 @@ void buildWater(int size) {
         verticies[i+2] = sizeZ / 2 + sizeZ*z / float(size - 1);
     }
 
+    cout << "Verticies: " << vertSize << endl;
+    cout << "IndSize: " << indSize << endl;
     
     int indCount = 0; 
-    int rowCount = 0;
-    for (int j = 0; j < vertSize - size * 3; j++) {
-        if (indCount == (size * 2 + 2)) {
-            indicies[indCount + 1] = size + 1;
-            rowCount++;
-        } else {
-            int tmp = j - rowCount;
-            indicies[indCount] = tmp;
-            indicies[indCount+1] = tmp + 4;
+    for (int row = 0; row < size - 1; row++) {
+        cout << "IndCount 0: " << indCount << endl;
+        for (int col = 0; col < size; col++) {
+            indicies[indCount++] = row*size + col;
+            indicies[indCount++] = row*size + size + col;
+            cout << "IndexVal0: " << indicies[indCount -2] << endl;
+            cout << "IndexVal1: " << indicies[indCount - 1] << endl;
         }
-        if (indCount == indSize) {
-            cout << "Index counter too big" << endl;
+        if (row != size-2) {
+            indicies[indCount++] = indSize;
+            cout << "IndexVal2: " << indicies[indCount - 1] << endl;
         }
-        indCount += 2;
+        cout << "IndCount 1: " << indCount << endl;
     }
+
+    glPrimitiveRestartIndex((GLuint)indSize);
 
     glBindBufferARB(GL_ARRAY_BUFFER_ARB, bufferIds[0]);
     glBufferDataARB(GL_ARRAY_BUFFER_ARB, vertSize, verticies, GL_STATIC_DRAW_ARB);

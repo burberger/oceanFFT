@@ -1,16 +1,10 @@
 all: shader-load ocean
 
-ifeq ($(shell uname),Darwin)
-	LIBS = -framework OpenGL -framework GLUT -lGLEW
-else
-	LIBS = -lGL -lGLU -lglut -lGLEW
-endif
-
 shader-load: shader-load.cpp shader-load.h
-	$(CXX) -g -Wall -c shader-load.cpp $(LIBS)
+	$(CXX) -g -Wall -c shader-load.cpp 
 
 ocean: ocean.cpp shader-load.o shader-load.h
-	$(CXX) -g -Wall ocean.cpp shader-load.o -o ocean $(LIBS) 
+	$(CXX) -g -Wall ocean.cpp shader-load.o -o ocean -framework OpenGL -framework GLUT -lGLEW
 
 .PHONY:
 clean :

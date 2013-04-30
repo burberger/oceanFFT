@@ -17,7 +17,7 @@ using namespace std;
 GLint phi = 0;
 GLint theta = 0;
 
-int size = 64;
+int size = 128;
 int zoom = 0;
 int height = 0;
 
@@ -37,10 +37,9 @@ void display() {
   // Modeling transformation
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-  gluLookAt(0.0, 0.0 + height, -20.0 + zoom, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+  gluLookAt(0.0, 0.0 + height, 20.0 - zoom, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
   glRotated(phi,1,0,0);
   glRotated(theta,0,1,0);
-  glTranslatef(0.0, 0.0, -3);
   
   // Provide both material and color so shaders can use either
   GLfloat color[4] = {.8,.4,.1,0};
@@ -53,17 +52,19 @@ void display() {
   // Send the time variable to the shader
   glUniform1f(time_var,time_count);
 
-  glBindVertexArray(bufferIds[0]);
-  //glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB, bufferIds[1]);
-  //glEnableClientState(GL_VERTEX_ARRAY);
-  //glVertexPointer(3, GL_FLOAT, 0, 0);
+  glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bufferIds[1]);
+  glEnableClientState(GL_VERTEX_ARRAY);
+  glVertexPointer(3, GL_FLOAT, 0, 0);
 
-  glDrawElements(GL_TRIANGLE_STRIP, (2*size+1)*(size - 1) - 1, GL_UNSIGNED_BYTE, 0);
+  glDrawElements(GL_TRIANGLE_STRIP, (2*size+1)*(size - 1) - 1, GL_UNSIGNED_INT, 0);
 
-  //glDisableClientState(GL_VERTEX_ARRAY);
+  glDisableClientState(GL_VERTEX_ARRAY);
 
-  glBindBufferARB(GL_ARRAY_BUFFER_ARB, 0);
-  glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB, 0);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+  glutSolidTeapot(1.0);
 
   //glBegin(GL_POLYGON);
     //glNormal3f(0.0, 1.0, 0.0);
@@ -147,7 +148,7 @@ void idle(void)
 }
 
 // Fixed quad map length and width, regardless of square resolution
-float sizeX = 40.0f, sizeZ = 40.0f;
+float fixsize = 40.0f;
 
 // Generates a square vertex map for the water and copies it to the graphics card
 void buildWater(int size) {
@@ -158,44 +159,35 @@ void buildWater(int size) {
     GLuint* indicies = new GLuint[indSize];
     // Calculate vertex positions from defined size limits
     // This will fit specified square count in defined size
-    for (int i = 0; i < vertSize; i += 3) {
-        int curVert = i / 3;
-        // determine what row we're on and generate square location
-        float x = float(curVert % size);
-        float z = float(curVert / size);
-        // generate vertex within some portion of coordinate boundaries
-        verticies[i] = -sizeX / 2 + sizeX*x / float(size - 1);
-        verticies[i+1] = -5; // Fixed height, real height controlled by shader
-        verticies[i+2] = sizeZ / 2 + sizeZ*z / float(size - 1);
+    int curVert = 0;
+    float dist = float (fixsize/(size-1));
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+            verticies[curVert++] = -fixsize/2 + j*dist;
+            verticies[curVert++] = -5;
+            verticies[curVert++] = fixsize/2 - i*dist;
+        }
     }
 
-    cout << "Verticies: " << vertSize/3 << endl;
-    cout << "IndSize: " << indSize << endl;
-    
     int indCount = 0; 
     for (int row = 0; row < size - 1; row++) {
-        cout << "IndCount 0: " << indCount << endl;
         for (int col = 0; col < size; col++) {
             indicies[indCount++] = row*size + col;
             indicies[indCount++] = row*size + size + col;
-            cout << "IndexVal0: " << indicies[indCount -2] << endl;
-            cout << "IndexVal1: " << indicies[indCount - 1] << endl;
         }
         if (row != size-2) {
             indicies[indCount++] = vertSize;
-            cout << "IndexVal2: " << indicies[indCount - 1] << endl;
         }
-        cout << "IndCount 1: " << indCount << endl;
     }
 
 
     glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
-    glBufferData(GL_ARRAY_BUFFER, vertSize, verticies, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*vertSize, verticies, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bufferIds[1]);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indSize, indicies, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*indSize, indicies, GL_STATIC_DRAW);
     glEnable(GL_PRIMITIVE_RESTART);
-    glPrimitiveRestartIndex((GLuint)vertSize);
+    glPrimitiveRestartIndexNV((GLuint)vertSize);
 
     delete[] verticies;
     delete[] indicies;

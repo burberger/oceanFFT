@@ -66,18 +66,6 @@ void display() {
 
   glutSolidTeapot(1.0);
 
-  //glBegin(GL_POLYGON);
-    //glNormal3f(0.0, 1.0, 0.0);
-    //for (int i = -64; i < 64; i++) {
-        //for (int j = -64; j < 64; j++) {
-            //glVertex3f(-1+i, -5.0, -1+j);
-            //glVertex3f(-1+i, -5.0, 1+j);
-            //glVertex3f(1+i, -5.0, 1+j);
-            //glVertex3f(1+i, -5.0, -1+j);
-        //}
-    //}
-  //glEnd();
-  
   glutSwapBuffers();
 }
 

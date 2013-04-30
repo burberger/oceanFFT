@@ -17,7 +17,7 @@ using namespace std;
 GLint phi = 0;
 GLint theta = 0;
 
-int size = 4;
+int size = 64;
 int zoom = 0;
 int height = 0;
 
@@ -38,9 +38,9 @@ void display() {
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   gluLookAt(0.0, 0.0 + height, -20.0 + zoom, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
-  glTranslatef(0.0, 0.0, -3);
   glRotated(phi,1,0,0);
   glRotated(theta,0,1,0);
+  glTranslatef(0.0, 0.0, -3);
   
   // Provide both material and color so shaders can use either
   GLfloat color[4] = {.8,.4,.1,0};
@@ -53,14 +53,14 @@ void display() {
   // Send the time variable to the shader
   glUniform1f(time_var,time_count);
 
-  glBindBufferARB(GL_ARRAY_BUFFER_ARB, bufferIds[0]);
-  glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB, bufferIds[1]);
-  glEnableClientState(GL_VERTEX_ARRAY);
-  glVertexPointer(3, GL_FLOAT, 0, 0);
+  glBindVertexArray(bufferIds[0]);
+  //glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB, bufferIds[1]);
+  //glEnableClientState(GL_VERTEX_ARRAY);
+  //glVertexPointer(3, GL_FLOAT, 0, 0);
 
-  glDrawElements(GL_TRIANGLE_STRIP, size*size*6, GL_UNSIGNED_BYTE, 0);
+  glDrawElements(GL_TRIANGLE_STRIP, (2*size+1)*(size - 1) - 1, GL_UNSIGNED_BYTE, 0);
 
-  glDisableClientState(GL_VERTEX_ARRAY);
+  //glDisableClientState(GL_VERTEX_ARRAY);
 
   glBindBufferARB(GL_ARRAY_BUFFER_ARB, 0);
   glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB, 0);
@@ -169,7 +169,7 @@ void buildWater(int size) {
         verticies[i+2] = sizeZ / 2 + sizeZ*z / float(size - 1);
     }
 
-    cout << "Verticies: " << vertSize << endl;
+    cout << "Verticies: " << vertSize/3 << endl;
     cout << "IndSize: " << indSize << endl;
     
     int indCount = 0; 
@@ -182,19 +182,20 @@ void buildWater(int size) {
             cout << "IndexVal1: " << indicies[indCount - 1] << endl;
         }
         if (row != size-2) {
-            indicies[indCount++] = indSize;
+            indicies[indCount++] = vertSize;
             cout << "IndexVal2: " << indicies[indCount - 1] << endl;
         }
         cout << "IndCount 1: " << indCount << endl;
     }
 
-    glPrimitiveRestartIndex((GLuint)indSize);
 
-    glBindBufferARB(GL_ARRAY_BUFFER_ARB, bufferIds[0]);
-    glBufferDataARB(GL_ARRAY_BUFFER_ARB, vertSize, verticies, GL_STATIC_DRAW_ARB);
+    glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
+    glBufferData(GL_ARRAY_BUFFER, vertSize, verticies, GL_STATIC_DRAW);
 
-    glBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB, bufferIds[1]);
-    glBufferDataARB(GL_ELEMENT_ARRAY_BUFFER_ARB, indSize, indicies, GL_STATIC_DRAW_ARB);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bufferIds[1]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indSize, indicies, GL_STATIC_DRAW);
+    glEnable(GL_PRIMITIVE_RESTART);
+    glPrimitiveRestartIndex((GLuint)vertSize);
 
     delete[] verticies;
     delete[] indicies;
@@ -206,7 +207,6 @@ void init() {
   // Simple Lighting
   glEnable(GL_LIGHTING);
   glEnable(GL_LIGHT0);
-  glEnable(GL_PRIMITIVE_RESTART);
   glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
   glGenBuffersARB(2, bufferIds);
 }

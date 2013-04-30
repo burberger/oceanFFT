@@ -1,5 +1,3 @@
-// minimal vertex shader
-// www.lighthouse3d.com
 uniform float time;
 void main()
 {       

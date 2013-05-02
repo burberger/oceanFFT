@@ -1,10 +1,14 @@
-all: shader-load ocean
+all: shader-load libs ocean
 
 shader-load: shader-load.cpp shader-load.h
-	$(CXX) -g -Wall -c shader-load.cpp 
+	$(CXX) -c shader-load.cpp 
 
-ocean: ocean.cpp shader-load.o shader-load.h
-	$(CXX) -g -Wall ocean.cpp shader-load.o -o ocean -framework OpenGL -framework GLUT -lGLEW
+libs: vector.cpp vector.h complex.cpp complex.h
+	$(CXX) -c vector.cpp
+	$(CXX) -c complex.cpp
+
+ocean: ocean.cpp shader-load.o shader-load.h vector.o vector.h complex.o complex.h
+	$(CXX) -g -Wall ocean.cpp shader-load.o vector.o complex.o -o ocean -lGL -lGLU -lglut -lGLEW 
 
 .PHONY:
 clean :

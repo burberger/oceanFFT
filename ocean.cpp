@@ -13,14 +13,12 @@
 #include <stdlib.h>
 #include <math.h>
 #include <iostream>
+#include <ctime>
+#include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
 
 #include <GL/glew.h>
-
-#ifdef __APPLE__
-#include <GLUT/glut.h>
-#else
 #include <GL/glut.h>
-#endif
 
 #include "shader-load.h"
 #include "vector.h"
@@ -48,7 +46,13 @@ GLuint program;
 bool program_on = true;
 GLint time_var, resolution_var;  // handles to the "time" and "resolution" shader variables
 float time_count = 0;   // value of the "time" shader variable
-timeval start;
+GLfloat lightPos[] = { 1.0, 0.0, -2.0, 1.0 };
+GLfloat lightKa[] = { 1.0, 1.0, 1.0, 1.0 };
+GLfloat lightKd[] = { 1.0, 1.0, 1.0, 1.0 };
+GLfloat lightKs[] = { 1.0, 1.0, 1.0, 1.0 };
+
+// RNG seed
+gsl_rng * rng;
 
 // Card buffer IDs
 GLuint bufferIds[2];
@@ -68,22 +72,28 @@ void display() {
   GLfloat color[4] = {.8,.4,.1,0};
   GLfloat specular[4] = {1,1,1,0};
   glColor4fv(color);
+  glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
   glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE,color);
   glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,specular);
   glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS,20);
+
+
   
   // Send the time variable to the shader
   glUniform1f(time_var,time_count);
 
+  // Bind buffers, inform opengl of structure of verticies
   glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bufferIds[1]);
   glEnableClientState(GL_VERTEX_ARRAY);
   glVertexPointer(3, GL_FLOAT, 0, 0);
 
+  // Draw triangle strips by index
   glDrawElements(GL_TRIANGLE_STRIP, (2*size+1)*(size - 1) - 1, GL_UNSIGNED_INT, 0);
 
   glDisableClientState(GL_VERTEX_ARRAY);
 
+  // Release buffers
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
@@ -247,20 +257,37 @@ float phillips(int n, int m) {
     float damping = 0.001;
     float l2 = Lsq * damping * damping;
     
-    // Equation 23 itself
+    // Equation 23, damped by eq. 24
     return A * exp(-1.0f / (k_len2 * Lsq)) / k_len4 * kw * exp(-k_len2 * l2);
 }
 
-// next, do h, and use normal_distribution from <random> in std
+// Generate the fourier amplitude of the height field at specified fequency vector k
+// Produces results in the complex frequency domain
+// Section 3.4
+complex ht_0(int n, int m) {
+    // produces gaussian random draws with mean 0 and std dev 1
+    double a = gsl_ran_gaussian(rng, 1.0);
+    double b = gsl_ran_gaussian(rng, 1.0);
+    complex r(a, b);
+    // Equation 25
+    return r * sqrt(phillips(n, m) / 2.0);
+}
+
+complex ht(float t, int n, int m) {
+    
+}
 
 void init() {
-  // Depth test
-  glEnable(GL_DEPTH_TEST);
-  // Simple Lighting
-  glEnable(GL_LIGHTING);
-  glEnable(GL_LIGHT0);
-  glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-  glGenBuffersARB(2, bufferIds);
+    // Depth test
+    glEnable(GL_DEPTH_TEST);
+    // Simple Lighting
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
+    //glLightfv(GL_LIGHT0, GL_AMBIENT, lightKa);
+    //glLightfv(GL_LIGHT0, GL_DIFFUSE, lightKd);
+    //glLightfv(GL_LIGHT0, GL_SPECULAR, lightKs);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    glGenBuffersARB(2, bufferIds);
 }
 
 // Main code - all initialization is here
@@ -282,6 +309,9 @@ int main(int argc, char** argv)
     resolution_var = glGetUniformLocation(program,"resolution");
     time_var = glGetUniformLocation(program,"time");
 
+    rng = gsl_rng_alloc(gsl_rng_taus);
+    gsl_rng_set(rng, time(0));
+
     init();
     buildWater(size);
 
@@ -292,5 +322,6 @@ int main(int argc, char** argv)
     glutReshapeFunc(reshape);
     glutMainLoop();
     glDeleteBuffersARB(2, bufferIds);
+    gsl_rng_free(rng);
     return 0; 
 }

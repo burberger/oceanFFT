@@ -4,8 +4,6 @@
 #include <math.h>
 
 class vector3 {
-  private:
-  protected:
   public:
     float x, y, z;
     vector3();
@@ -17,12 +15,10 @@ class vector3 {
     vector3 operator*(const float s);
     vector3& operator=(const vector3& v);
     float length();
-    vector3 unit();
+    vector3 normalize();
 };
 
 class vector2 {
-  private:
-  protected:
   public:
     float x, y;
     vector2();
@@ -33,7 +29,7 @@ class vector2 {
     vector2 operator*(const float s);
     vector2& operator=(const vector2& v);
     float length();
-    vector2 unit();
+    vector2 normalize();
 };
 
 #endif

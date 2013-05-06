@@ -2,8 +2,6 @@
 #define COMPLEX_H
 
 class complex {
-  private:
-  protected:
   public:
     float a, b;
     static unsigned int additions, multiplications;

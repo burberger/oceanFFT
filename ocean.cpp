@@ -31,12 +31,20 @@ GLint phi = 0;
 GLint theta = 0;
 
 // Constants for ocean field
-int size = 1024; // Number of verticies for each side of the field
+int size = 1024; // Number of verticies for each side of the field, determines square resolution
 float g = 9.81; // Gravity
 float fixsize = 500.0f; // Fixed quad map length and width, regardless of square resolution
 vector2 w(1.0, 1.0); // Wind speed
 float A = 1.0; // Spectrum parameter, affects output height
+int N = 32; // Frequency map size, has to be some multiple of two
 
+struct height_norm {
+    complex height;
+    vector3 normal;
+};
+
+GLfloat* vertices;
+GLuint* indicies;
 
 int zoom = 0;
 int height = 0;
@@ -163,9 +171,10 @@ void reshape(int w, int h) {
 // Advance time
 void timerUpdate(int value) {
     time_count += 0.02;
-    glutPostRedisplay();
 }
 
+// As wrong as this seems, this gives relatively smooth time updates, where
+// re-registering the timer from within the callback results in noticeable stuttering
 void idle(void) {
     glutTimerFunc(20, timerUpdate, 0);
     glutPostRedisplay();
@@ -179,8 +188,8 @@ void buildWater(int size) {
     // Number of vertex refrences, including geometry restart indicators
     int indSize = (2*size+1)*(size - 1) - 1;
 
-    GLfloat* vertices = new GLfloat[vertSize];
-    GLuint* indicies = new GLuint[indSize];
+    vertices = new GLfloat[vertSize];
+    indicies = new GLuint[indSize];
 
     // Calculate vertex positions from defined size limits
     // This will fit specified square count in defined size
@@ -215,7 +224,6 @@ void buildWater(int size) {
     glEnable(GL_PRIMITIVE_RESTART);
     glPrimitiveRestartIndexNV((GLuint)vertSize);
 
-    delete[] vertices;
     delete[] indicies;
 }
 
@@ -245,7 +253,7 @@ float phillips(int n, int m) {
     float k_len4 = k_len2 * k_len2;
     
     // |k dot w|^2
-    float kw = k.unit() * w.unit();
+    float kw = k.normalize() * w.normalize();
     kw = kw * kw;
 
     // L, L^2
@@ -273,8 +281,60 @@ complex ht_0(int n, int m) {
     return r * sqrt(phillips(n, m) / 2.0);
 }
 
+// Generate the fourier amplitudes of the wave field
+// Equation 26
 complex ht(float t, int n, int m) {
+    complex ht0 = ht_0(n, m);
+    complex ht0conj = ht_0(-n, -m).conj();
     
+    // complex exponential is calculated by euler's identity
+    // for faster computation
+    float omegat = dispersion(n, m) * t;
+    float real = cos(omegat);
+    float cmp = sin(omegat);
+
+    complex c0(real, cmp);
+    complex c1(real, -cmp);
+    return ht0 * c0 + ht0conj * c1;
+}
+
+// Computes a height and a normal value for an individual coordinate, and returns them
+// packed into a struct.  These are evaluated by Equation 19 for height, and
+// Equation 20 for normal
+height_norm heightAndNormal(vector2 x, float t) {
+    complex height(0.0f, 0.0f);
+    vector3 normal(0.0f, 0.0f, 0.0f);
+    
+    float kx, kz, kDx;
+    vector2 k;
+    complex c, res, ht_c;
+    // Discrete fourier transform over frequency plane described by vector k
+    // Equation 19
+    for (int m = -N/2; m < N/2; ++m) {
+        kz = 2.0f * M_PI * m / fixsize;
+        for (int n = -N/2; n < N/2; ++n) {
+            // K vector is generated for this frequency point
+            kx = 2.0f * M_PI * n / fixsize;
+            k = vector2(kx, kz);
+
+            // frequency dot location, then compute exponential
+            kDx = k * x;
+            // Euler identity resolution of exponential
+            c = complex(cos(kDx), sin(kDx));
+            // Solve full equation for this iteration of the frequency plane
+            ht_c = ht(t, n, m) * c;
+
+            // Sum the height value
+            height = height + ht_c;
+            // Sum the normal value, converted into a proper vector
+            // Equation 20
+            normal = normal + vector3(-kx * ht_c.b, 0.0f, -kz * ht_c.b);
+        }
+    }
+    height_norm hn;
+    hn.height = height;
+    hn.normal = normal;
+    return hn;
 }
 
 void init() {

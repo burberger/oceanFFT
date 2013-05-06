@@ -32,7 +32,7 @@ float vector3::length() {
 	return sqrt(this->x*this->x + this->y*this->y + this->z*this->z);
 }
 
-vector3 vector3::unit() {
+vector3 vector3::normalize() {
 	float l = this->length();
 	return vector3(this->x/l, this->y/l, this->z/l);
 }
@@ -67,7 +67,7 @@ float vector2::length() {
 	return sqrt(this->x*this->x + this->y*this->y);
 }
 
-vector2 vector2::unit() {
+vector2 vector2::normalize() {
 	float l = this->length();
 	return vector2(this->x/l, this->y/l);
 }

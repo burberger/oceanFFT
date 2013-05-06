@@ -31,11 +31,12 @@ GLint phi = 0;
 GLint theta = 0;
 
 // Constants for ocean field
-int size = 1024; // Number of verticies for each side of the field, determines square resolution
+int size = 128; // Number of verticies for each side of the field, determines square resolution
 float g = 9.81; // Gravity
 float fixsize = 500.0f; // Fixed quad map length and width, regardless of square resolution
-vector2 w(1.0, 1.0); // Wind speed
-float A = 1.0; // Spectrum parameter, affects output height
+float L = fixsize/2;
+vector2 w(2.5, 1.5); // Wind speed
+float A = 1.2; // Spectrum parameter, affects output height
 int N = 32; // Frequency map size, has to be some multiple of two
 
 struct height_norm {
@@ -163,68 +164,9 @@ void reshape(int w, int h) {
   glViewport(0,0,w,h);
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluPerspective(60.0, (GLfloat) w / (GLfloat) h, 0.1, 200.0);
+  gluPerspective(60.0, (GLfloat) w / (GLfloat) h, 0.1, 500.0);
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-}
-
-// Advance time
-void timerUpdate(int value) {
-    time_count += 0.02;
-}
-
-// As wrong as this seems, this gives relatively smooth time updates, where
-// re-registering the timer from within the callback results in noticeable stuttering
-void idle(void) {
-    glutTimerFunc(20, timerUpdate, 0);
-    glutPostRedisplay();
-}
-
-
-// Generates a square vertex map for the water and copies it to the graphics card
-void buildWater(int size) {
-    // Total number of vertex coordinate values
-    int vertSize = size*size*3;
-    // Number of vertex refrences, including geometry restart indicators
-    int indSize = (2*size+1)*(size - 1) - 1;
-
-    vertices = new GLfloat[vertSize];
-    indicies = new GLuint[indSize];
-
-    // Calculate vertex positions from defined size limits
-    // This will fit specified square count in defined size
-    int curVert = 0;
-    float dist = float (fixsize/(size-1));
-    for (int i = 0; i < size; i++) {
-        for (int j = 0; j < size; j++) {
-            vertices[curVert++] = -fixsize/2 + j*dist;
-            vertices[curVert++] = -5;
-            vertices[curVert++] = fixsize/2 - i*dist;
-        }
-    }
-
-    // Calculate index refrences to actually draw the triangles
-    int indCount = 0; 
-    for (int row = 0; row < size - 1; row++) {
-        for (int col = 0; col < size; col++) {
-            indicies[indCount++] = row*size + col;
-            indicies[indCount++] = row*size + size + col;
-        }
-        // If end of row, and not last row, mark it with identifier
-        if (row != size-2) {
-            indicies[indCount++] = vertSize;
-        }
-    }
-
-    glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*vertSize, vertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bufferIds[1]);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*indSize, indicies, GL_STATIC_DRAW);
-    glEnable(GL_PRIMITIVE_RESTART);
-    glPrimitiveRestartIndexNV((GLuint)vertSize);
-
-    delete[] indicies;
 }
 
 // Model the periodic dispersion relation, Section 3.2
@@ -232,8 +174,8 @@ float dispersion(int n, int m) {
     // Define base frequency at which to loop the dispersion
     float w0 = 2 * M_PI / 200.0f;
     // Calculate K vector from current location in 2D frequency grid
-    float kx = 2 * M_PI * n / fixsize;
-    float kz = 2 * M_PI * m / fixsize;
+    float kx = 2 * M_PI * n / L;
+    float kz = 2 * M_PI * m / L;
     // Equation 18
     return floor(sqrt(g * sqrt(kx * kx + kz * kz)) / w0) * w0;
 }
@@ -241,7 +183,7 @@ float dispersion(int n, int m) {
 // Phillips Spectrum modulated by wind speed and direction
 // Section 3.3, equation 23
 float phillips(int n, int m) {
-    vector2 k(2 * M_PI * n / fixsize, 2 * M_PI * m / fixsize);
+    vector2 k(2 * M_PI * n / L, 2 * M_PI * m / fixsize);
     float k_len = k.length();
     // Do nothing if frequency is excessively small, saves time
     if (k_len < 0.000001) {
@@ -266,7 +208,8 @@ float phillips(int n, int m) {
     float l2 = Lsq * damping * damping;
     
     // Equation 23, damped by eq. 24
-    return A * exp(-1.0f / (k_len2 * Lsq)) / k_len4 * kw * exp(-k_len2 * l2);
+    float val = A * exp(-1.0f / (k_len2 * Lsq)) / k_len4 * kw * exp(-k_len2 * l2);
+    return val;
 }
 
 // Generate the fourier amplitude of the height field at specified fequency vector k
@@ -311,10 +254,10 @@ height_norm heightAndNormal(vector2 x, float t) {
     // Discrete fourier transform over frequency plane described by vector k
     // Equation 19
     for (int m = -N/2; m < N/2; ++m) {
-        kz = 2.0f * M_PI * m / fixsize;
+        kz = 2.0f * M_PI * m / L;
         for (int n = -N/2; n < N/2; ++n) {
             // K vector is generated for this frequency point
-            kx = 2.0f * M_PI * n / fixsize;
+            kx = 2.0f * M_PI * n / L;
             k = vector2(kx, kz);
 
             // frequency dot location, then compute exponential
@@ -336,6 +279,68 @@ height_norm heightAndNormal(vector2 x, float t) {
     hn.normal = normal;
     return hn;
 }
+
+// Advance time
+void timerUpdate(int value) {
+    time_count += 0.02;
+}
+
+// As wrong as this seems, this gives relatively smooth time updates, where
+// re-registering the timer from within the callback results in noticeable stuttering
+void idle(void) {
+    glutTimerFunc(20, timerUpdate, 0);
+    glutPostRedisplay();
+}
+
+
+// Generates a square vertex map for the water and copies it to the graphics card
+void buildWater(int size) {
+    // Total number of vertex coordinate values
+    int vertSize = size*size*3;
+    // Number of vertex refrences, including geometry restart indicators
+    int indSize = (2*size+1)*(size - 1) - 1;
+
+    vertices = new GLfloat[vertSize];
+    indicies = new GLuint[indSize];
+
+    // Calculate vertex positions from defined size limits
+    // This will fit specified square count in defined size
+    int curVert = 0;
+    float dist = float (fixsize/(size-1));
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+            vertices[curVert++] = -fixsize/2 + j*dist;
+            vertices[curVert++] = -5;
+            vertices[curVert++] = fixsize/2 - i*dist;
+            height_norm c = heightAndNormal(vector2(vertices[curVert - 3], vertices[curVert - 1]), 6.0f);
+            vertices[curVert - 2] += c.height.a;
+        }
+    }
+
+    // Calculate index refrences to actually draw the triangles
+    int indCount = 0; 
+    for (int row = 0; row < size - 1; row++) {
+        for (int col = 0; col < size; col++) {
+            indicies[indCount++] = row*size + col;
+            indicies[indCount++] = row*size + size + col;
+        }
+        // If end of row, and not last row, mark it with identifier
+        if (row != size-2) {
+            indicies[indCount++] = vertSize;
+        }
+    }
+
+    glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*vertSize, vertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bufferIds[1]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*indSize, indicies, GL_STATIC_DRAW);
+    glEnable(GL_PRIMITIVE_RESTART);
+    glPrimitiveRestartIndexNV((GLuint)vertSize);
+
+    delete[] indicies;
+}
+
 
 void init() {
     // Depth test

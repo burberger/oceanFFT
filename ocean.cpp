@@ -8,10 +8,13 @@
  * for each frame.  This simplifies the implementation, but could be
  * made significantly faster by operating the FFT on the GPU as a
  * OpenCL or CUDA kernel. 
- * All equation and section refrences refer to locations in the Tessendorf paper
+ * All equation and section refrences refer to locations in the Tessendorf paper.
+ * All equations have been reworked to allow for indexing from 0, as to allow for the use
+ * of a premade FFT algorithm
  */
 #include <stdlib.h>
 #include <math.h>
+#include <fftw3.h>
 #include <iostream>
 #include <ctime>
 #include <gsl/gsl_rng.h>
@@ -33,9 +36,9 @@ GLint theta = 0;
 // Constants for ocean field
 int size = 128; // Number of verticies for each side of the field, determines square resolution
 float g = 9.81; // Gravity
-float fixsize = 500.0f; // Fixed quad map length and width, regardless of square resolution
+float fixsize = 1000.0f; // Fixed quad map length and width, regardless of square resolution
 float L = fixsize/2;
-vector2 w(2.5, 1.5); // Wind speed
+vector2 w(2.7, 2.6); // Wind speed
 float A = 1.2; // Spectrum parameter, affects output height
 int N = 32; // Frequency map size, has to be some multiple of two
 
@@ -47,13 +50,16 @@ struct height_norm {
 GLfloat* vertices;
 GLuint* indicies;
 
+fftw_complex *in, *out;
+fftw_plan p;
+
 int zoom = 0;
 int height = 0;
 
 // Shader
 GLuint program;
 bool program_on = true;
-GLint time_var, resolution_var;  // handles to the "time" and "resolution" shader variables
+GLint time_var;  // handles to the "time" shader variable
 float time_count = 0;   // value of the "time" shader variable
 GLfloat lightPos[] = { 1.0, 0.0, -2.0, 1.0 };
 GLfloat lightKa[] = { 1.0, 1.0, 1.0, 1.0 };
@@ -68,47 +74,47 @@ GLuint bufferIds[2];
 
 // Display function - draw a teapot
 void display() {
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-  // Modeling transformation
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  gluLookAt(0.0, 0.0 + height, 20.0 - zoom, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
-  glRotated(phi,1,0,0);
-  glRotated(theta,0,1,0);
-  
-  // Provide both material and color so shaders can use either
-  GLfloat color[4] = {.8,.4,.1,0};
-  GLfloat specular[4] = {1,1,1,0};
-  glColor4fv(color);
-  glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
-  glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE,color);
-  glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,specular);
-  glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS,20);
+    // Modeling transformation
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    gluLookAt(0.0, 0.0 + height, 20.0 - zoom, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+    glRotated(phi,1,0,0);
+    glRotated(theta,0,1,0);
+
+    // Provide both material and color so shaders can use either
+    GLfloat color[4] = {.8,.4,.1,0};
+    GLfloat specular[4] = {1,1,1,0};
+    glColor4fv(color);
+    glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE,color);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,specular);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS,20);
 
 
-  
-  // Send the time variable to the shader
-  glUniform1f(time_var,time_count);
 
-  // Bind buffers, inform opengl of structure of verticies
-  glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bufferIds[1]);
-  glEnableClientState(GL_VERTEX_ARRAY);
-  glVertexPointer(3, GL_FLOAT, 0, 0);
+    // Send the time variable to the shader
+    glUniform1f(time_var,time_count);
 
-  // Draw triangle strips by index
-  glDrawElements(GL_TRIANGLE_STRIP, (2*size+1)*(size - 1) - 1, GL_UNSIGNED_INT, 0);
+    // Bind buffers, inform opengl of structure of verticies
+    glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bufferIds[1]);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glVertexPointer(3, GL_FLOAT, 0, 0);
 
-  glDisableClientState(GL_VERTEX_ARRAY);
+    // Draw triangle strips by index
+    glDrawElements(GL_TRIANGLE_STRIP, (2*size+1)*(size - 1) - 1, GL_UNSIGNED_INT, 0);
 
-  // Release buffers
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glDisableClientState(GL_VERTEX_ARRAY);
 
-  glutSolidTeapot(1.0);
+    // Release buffers
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-  glutSwapBuffers();
+    glutSolidTeapot(1.0);
+
+    glutSwapBuffers();
 }
 
 void keyboard (unsigned char key, int x, int y)
@@ -156,15 +162,11 @@ void keyboard (unsigned char key, int x, int y)
 
 // Window resize
 void reshape(int w, int h) {
-  // Inform shader program of new resolution
-  // by setting "resolution" variable
-  glUniform2f(resolution_var,w,h);
-
   // Set up view and projection
   glViewport(0,0,w,h);
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluPerspective(60.0, (GLfloat) w / (GLfloat) h, 0.1, 500.0);
+  gluPerspective(60.0, (GLfloat) w / (GLfloat) h, 0.1, 2000.0);
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 }
@@ -183,7 +185,7 @@ float dispersion(int n, int m) {
 // Phillips Spectrum modulated by wind speed and direction
 // Section 3.3, equation 23
 float phillips(int n, int m) {
-    vector2 k(2 * M_PI * n / L, 2 * M_PI * m / fixsize);
+    vector2 k(2 * M_PI * n / L, 2 * M_PI * m / L);
     float k_len = k.length();
     // Do nothing if frequency is excessively small, saves time
     if (k_len < 0.000001) {
@@ -250,7 +252,7 @@ height_norm heightAndNormal(vector2 x, float t) {
     
     float kx, kz, kDx;
     vector2 k;
-    complex c, res, ht_c;
+    complex c, ht_c;
     // Discrete fourier transform over frequency plane described by vector k
     // Equation 19
     for (int m = -N/2; m < N/2; ++m) {
@@ -279,6 +281,10 @@ height_norm heightAndNormal(vector2 x, float t) {
     hn.normal = normal;
     return hn;
 }
+
+//void evalFFT(vector2 x, float t) {
+    
+//}
 
 // Advance time
 void timerUpdate(int value) {
@@ -312,8 +318,8 @@ void buildWater(int size) {
             vertices[curVert++] = -fixsize/2 + j*dist;
             vertices[curVert++] = -5;
             vertices[curVert++] = fixsize/2 - i*dist;
-            height_norm c = heightAndNormal(vector2(vertices[curVert - 3], vertices[curVert - 1]), 6.0f);
-            vertices[curVert - 2] += c.height.a;
+            //height_norm c = heightAndNormal(vector2(vertices[curVert - 3], vertices[curVert - 1]), 6.0f);
+            //vertices[curVert - 2] += c.height.a;
         }
     }
 
@@ -371,8 +377,16 @@ int main(int argc, char** argv)
     glUseProgram(program);
 
     // Uniform shader variables to pass UI information to the shaders
-    resolution_var = glGetUniformLocation(program,"resolution");
     time_var = glGetUniformLocation(program,"time");
+    GLint w_var = glGetUniformLocation(program, "w");
+    GLint L_var = glGetUniformLocation(program, "L");
+
+    glUniform2f(w_var, w.x, w.y);
+    glUniform1f(L_var, L);
+
+    in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
+    out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
+    p = fftw_plan_dft_2d(N, N, in, out, FFTW_FORWARD, FFTW_MEASURE);
 
     rng = gsl_rng_alloc(gsl_rng_taus);
     gsl_rng_set(rng, time(0));

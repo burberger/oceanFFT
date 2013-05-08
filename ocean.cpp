@@ -10,7 +10,7 @@
  * OpenCL or CUDA kernel. 
  * All equation and section refrences refer to locations in the Tessendorf paper.
  * All equations have been reworked to allow for indexing from 0, as to allow for the use
- * of a premade FFT algorithm
+ * of the FFT algorithm
  */
 #include <stdlib.h>
 #include <math.h>
@@ -34,13 +34,13 @@ GLint phi = 0;
 GLint theta = 0;
 
 // Constants for ocean field
-int size = 128; // Number of verticies for each side of the field, determines square resolution
+int size = 65; // Number of verticies for each side of the field, determines square resolution
 float g = 9.81; // Gravity
 float fixsize = 1000.0f; // Fixed quad map length and width, regardless of square resolution
 float L = fixsize/2;
 vector2 w(2.7, 2.6); // Wind speed
-float A = 1.2; // Spectrum parameter, affects output height
-int N = 32; // Frequency map size, has to be some multiple of two
+float A = 0.005f; // Spectrum parameter, affects output height
+int N = 64; // Frequency map size, has to be some multiple of two
 
 struct height_norm {
     complex height;
@@ -61,7 +61,7 @@ GLuint program;
 bool program_on = true;
 GLint time_var;  // handles to the "time" shader variable
 float time_count = 0;   // value of the "time" shader variable
-GLfloat lightPos[] = { 1.0, 0.0, -2.0, 1.0 };
+GLfloat lightPos[] = { 1.0, 100.0, -20.0, 1.0 };
 GLfloat lightKa[] = { 1.0, 1.0, 1.0, 1.0 };
 GLfloat lightKd[] = { 1.0, 1.0, 1.0, 1.0 };
 GLfloat lightKs[] = { 1.0, 1.0, 1.0, 1.0 };
@@ -112,7 +112,7 @@ void display() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-    glutSolidTeapot(1.0);
+    //glutSolidTeapot(1.0);
 
     glutSwapBuffers();
 }
@@ -140,10 +140,10 @@ void keyboard (unsigned char key, int x, int y)
     program_on = !program_on;
     break;
   case '+':
-    zoom++;
+    zoom += 5;
     break;
   case '-':
-    zoom--;
+    zoom -= 5;
     break;
   case 'u':
     height++;
@@ -176,8 +176,8 @@ float dispersion(int n, int m) {
     // Define base frequency at which to loop the dispersion
     float w0 = 2 * M_PI / 200.0f;
     // Calculate K vector from current location in 2D frequency grid
-    float kx = 2 * M_PI * n / L;
-    float kz = 2 * M_PI * m / L;
+    float kx = 2 * M_PI * (n - N) / L;
+    float kz = 2 * M_PI * (m - N) / L;
     // Equation 18
     return floor(sqrt(g * sqrt(kx * kx + kz * kz)) / w0) * w0;
 }
@@ -185,7 +185,7 @@ float dispersion(int n, int m) {
 // Phillips Spectrum modulated by wind speed and direction
 // Section 3.3, equation 23
 float phillips(int n, int m) {
-    vector2 k(2 * M_PI * n / L, 2 * M_PI * m / L);
+    vector2 k(2 * M_PI * (n - N) / L, 2 * M_PI * (m - N) / L);
     float k_len = k.length();
     // Do nothing if frequency is excessively small, saves time
     if (k_len < 0.000001) {
@@ -282,19 +282,55 @@ height_norm heightAndNormal(vector2 x, float t) {
     return hn;
 }
 
-//void evalFFT(vector2 x, float t) {
+void evalFFT(float t) {
+    float kx, kz;
+    int index;
+    complex htval;
     
-//}
+    index = 0;
+    for (int m = 0; m < N; ++m) {
+        kz = 2.0f * M_PI * (m - N) / L;
+        for (int n = 0; n < N; ++n) {
+            kx = 2.0f * M_PI * (n - N) / L;
+            htval = ht(t, n, m);
+            in[index][0] = htval.a;
+            in[index++][1] = htval.b;
+        }
+    }
+
+    // The secret sauce
+    fftw_execute(p);
+
+    // used to correct sign to pre translation
+    int sign;
+    float signs[] = { 1.0f, -1.0f };
+    vector3 n;
+    int index1 = 1;
+    for (int m = 0; m < N; ++m) {
+        for (int n = 0; n < N; ++n) {
+            index = m * N + n;
+            index1 = m * (N+1) + n;
+
+            sign = signs[(n + m) & 1];
+
+            vertices[index1 * 3 + 1] = out[index][0] * sign;
+        }
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*size*size*3, vertices, GL_DYNAMIC_DRAW);
+}
 
 // Advance time
 void timerUpdate(int value) {
-    time_count += 0.02;
+    time_count += 0.002;
+    evalFFT(time_count);
+    glutTimerFunc(20, timerUpdate, 0);
+    glutPostRedisplay();
 }
 
 // As wrong as this seems, this gives relatively smooth time updates, where
 // re-registering the timer from within the callback results in noticeable stuttering
 void idle(void) {
-    glutTimerFunc(20, timerUpdate, 0);
     glutPostRedisplay();
 }
 
@@ -313,20 +349,19 @@ void buildWater(int size) {
     // This will fit specified square count in defined size
     int curVert = 0;
     float dist = float (fixsize/(size-1));
-    for (int i = 0; i < size; i++) {
-        for (int j = 0; j < size; j++) {
+    for (int i = 0; i < size; ++i) {
+        for (int j = 0; j < size; ++j) {
             vertices[curVert++] = -fixsize/2 + j*dist;
             vertices[curVert++] = -5;
             vertices[curVert++] = fixsize/2 - i*dist;
             //height_norm c = heightAndNormal(vector2(vertices[curVert - 3], vertices[curVert - 1]), 6.0f);
-            //vertices[curVert - 2] += c.height.a;
         }
     }
 
     // Calculate index refrences to actually draw the triangles
     int indCount = 0; 
-    for (int row = 0; row < size - 1; row++) {
-        for (int col = 0; col < size; col++) {
+    for (int row = 0; row < size - 1; ++row){
+        for (int col = 0; col < size; ++col) {
             indicies[indCount++] = row*size + col;
             indicies[indCount++] = row*size + size + col;
         }
@@ -337,7 +372,7 @@ void buildWater(int size) {
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*vertSize, vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*vertSize, vertices, GL_DYNAMIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bufferIds[1]);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*indSize, indicies, GL_STATIC_DRAW);
@@ -384,15 +419,16 @@ int main(int argc, char** argv)
     glUniform2f(w_var, w.x, w.y);
     glUniform1f(L_var, L);
 
-    in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
-    out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N);
-    p = fftw_plan_dft_2d(N, N, in, out, FFTW_FORWARD, FFTW_MEASURE);
+    in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);
+    out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);
+    p = fftw_plan_dft_2d(N, N, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
 
     rng = gsl_rng_alloc(gsl_rng_taus);
     gsl_rng_set(rng, time(0));
 
     init();
     buildWater(size);
+    glutTimerFunc(20, timerUpdate, 0);
 
     // Attach event handlers
     glutKeyboardFunc(keyboard);

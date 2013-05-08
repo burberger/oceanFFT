@@ -50,11 +50,12 @@ flags = [
 './tests/gmock',
 '-isystem',
 './tests/gmock/include',
-'-I/usr/local/include/assimp',
-'-lassimp',
 '-lGL',
 '-lGLU',
-'-lglut'
+'-lglut',
+'-lgsl',
+'-lfftw3',
+'-lm',
 '-lGLEW'
 ]
 

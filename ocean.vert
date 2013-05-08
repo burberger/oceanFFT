@@ -12,7 +12,7 @@ struct height_norm {
     vec3 normal;
 };
 
-// Perlin noise generator code, taken from https://github.com/ashima/webgl-noise/blob/master/src/noise2D.glsl
+// Perlin noise generator code, taken from https://github.com/ashima/webgl-noise
 // Author : Ian McEwan, Ashima Arts
 vec3 mod289(vec3 x) {
   return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -118,7 +118,7 @@ float phillips(int n, int m) {
 }
 
 vec2 ht_0(int n, int m) {
-    float n1 = snoise(vec2(n - time, m + time));
+    float n1 = snoise(vec2(n + 17, m - 23));
     float n2 = snoise(vec2(m - 0.3*time, n + 0.4*time));
     vec2 r = vec2(n1, n2);
     return r * sqrt(phillips(n, m) / 2.0);

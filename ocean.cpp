@@ -287,14 +287,14 @@ void evalFFT(float t) {
     int index;
     complex htval;
     
-    index = 0;
     for (int m = 0; m < N; ++m) {
         kz = 2.0f * M_PI * (m - N) / L;
         for (int n = 0; n < N; ++n) {
             kx = 2.0f * M_PI * (n - N) / L;
+            index = m * N + n;
             htval = ht(t, n, m);
             in[index][0] = htval.a;
-            in[index++][1] = htval.b;
+            in[index][1] = htval.b;
         }
     }
 
@@ -322,7 +322,7 @@ void evalFFT(float t) {
 
 // Advance time
 void timerUpdate(int value) {
-    time_count += 0.002;
+    time_count += 0.0002;
     evalFFT(time_count);
     glutTimerFunc(20, timerUpdate, 0);
     glutPostRedisplay();

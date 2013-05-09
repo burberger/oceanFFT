@@ -110,13 +110,12 @@ void display() {
     glEnableClientState(GL_VERTEX_ARRAY);
     glVertexPointer(3, GL_FLOAT, 0, 0);
 
-    glBindBuffer(GL_ARRAY_BUFFER, normalBuffer);
-    glEnableClientState(GL_NORMAL_ARRAY);
-    glNormalPointer(GL_FLOAT, 0, (void*)0);
-
     // Draw triangle strips by index
     glDrawElements(GL_TRIANGLE_STRIP, (2*size+1)*(size - 1) - 1, GL_UNSIGNED_INT, 0);
 
+    glBindBuffer(GL_ARRAY_BUFFER, normalBuffer);
+    glEnableClientState(GL_NORMAL_ARRAY);
+    glNormalPointer(GL_FLOAT, 0, (void*)0);
 
     glDisableClientState(GL_VERTEX_ARRAY);
 
@@ -296,7 +295,6 @@ void evalFFT(float t) {
             complex sz = complex(0, kz);
             sx = htval * sx;
             sz = htval * sz;
-            
 
             ht_slopex[index][0] = sx.a;
             ht_slopex[index][1] = sx.b;
@@ -323,6 +321,9 @@ void evalFFT(float t) {
             sign = signs[(n + m) & 1];
 
             vertices[index1 * 3 + 1] = out[index][0] * sign;
+
+            ht_slopex[index][0] = ht_slopex[index][0] * sign;
+            ht_slopez[index][0] = ht_slopez[index][0] * sign;
 
             normals[index1 * 3] = 0.0f - ht_slopex[index][0];
             normals[index1 * 3 + 1] = 1.0f;
@@ -428,11 +429,6 @@ int main(int argc, char** argv)
 
     // Uniform shader variables to pass UI information to the shaders
     time_var = glGetUniformLocation(program,"time");
-    GLint w_var = glGetUniformLocation(program, "w");
-    GLint L_var = glGetUniformLocation(program, "L");
-
-    glUniform2f(w_var, w.x, w.y);
-    glUniform1f(L_var, L);
 
     in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);
     out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);

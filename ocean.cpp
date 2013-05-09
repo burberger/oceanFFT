@@ -26,7 +26,6 @@
 #include "shader-load.h"
 #include "vector.h"
 #include "complex.h"
-#include "fft.h"
 
 using namespace std;
 
@@ -37,10 +36,10 @@ GLint theta = 0;
 // Constants for ocean field
 int size = 129; // Number of verticies for each side of the field, determines square resolution
 float g = 9.81; // Gravity
-float fixsize = 1000.0f; // Fixed quad map length and width, regardless of square resolution
+float fixsize = 1200.0f; // Fixed quad map length and width, regardless of square resolution
 float L = fixsize/16;
 vector2 w(3.0, 3.0); // Wind speed
-float A = 0.05f; // Spectrum parameter, affects output height
+float A = 0.06f; // Spectrum parameter, affects output height
 int N = 128; // Frequency map size, has to be some multiple of two
 
 struct height_norm {
@@ -55,15 +54,15 @@ complex* ht0 = new complex[N*N];
 complex* ht0conj = new complex[N*N];
 
 // FFT variables
-fftw_complex *in, *out, *ht_slopex, *ht_slopez;
-fftw_plan p, q, r;
+fftw_complex *in, *out, *ht_slopex, *ht_slopez, *ht_movex, *ht_movez;
+fftw_plan p, q, r, mx, mz;
 
 int zoom = 0;
 int height = 0;
 
 // Shader
 GLuint program;
-bool program_on = true;
+bool program_on = false;
 bool wire_on = false;
 GLint time_var;  // handles to the "time" shader variable
 float time_count = 0;   // value of the "time" shader variable
@@ -79,14 +78,46 @@ gsl_rng * rng;
 GLuint bufferIds[2];
 GLuint normalBuffer;
 
+void renderBitmapString(float x, float y, void *font,const char *string) {
+    const char *c;
+    glRasterPos2f(x, y);
+    for (c=string; *c != '\0'; c++) {
+        glutBitmapCharacter(font, *c);
+    }
+} 
+
+void setOrthographicProjection() {
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluOrtho2D(0, 1024, 0, 768);
+    glScalef(1, -1, 1);
+    glTranslatef(0, -768, 0);
+    glMatrixMode(GL_MODELVIEW);
+}
+
+void resetPerspectiveProjection() {
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+} 
 // Display function - draw a teapot
 void display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_LIGHTING);
+    setOrthographicProjection();
+    glPushMatrix();
+    glLoadIdentity();
+    glColor3f(1.0, 1.0, 1.0);
+    renderBitmapString(25, 730, GLUT_BITMAP_9_BY_15, "Bob U. 2013");
+    glPopMatrix();
+    resetPerspectiveProjection();
+    glEnable(GL_LIGHTING);
 
     // Modeling transformation
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    gluLookAt(0.0, 0.0 + height, 20.0 - zoom, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+    gluLookAt(0.0, 100.0 + height, 220.0 - zoom, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
     glRotated(phi,1,0,0);
     glRotated(theta,0,1,0);
 
@@ -123,6 +154,12 @@ void display() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
+    glPushMatrix();
+    glTranslatef(0.0, vertices[24961]+3, 0.0);
+    glutSolidTeapot(15.0);
+    glPopMatrix();
+
+
     glutSwapBuffers();
 }
 
@@ -149,7 +186,7 @@ void keyboard (unsigned char key, int x, int y)
     program_on = !program_on;
     break;
   case 'w':
-    if (wire_on)
+    if (!wire_on)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     else
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -163,10 +200,10 @@ void keyboard (unsigned char key, int x, int y)
     zoom -= 5;
     break;
   case 'u':
-    height++;
+    height += 5;
     break;
   case 'o':
-    height--;
+    height -= 5;
     break;
   case 'q':
     exit(0);
@@ -183,7 +220,7 @@ void reshape(int w, int h) {
   glViewport(0,0,w,h);
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  gluPerspective(60.0, (GLfloat) w / (GLfloat) h, 0.1, 2000.0);
+  gluPerspective(60.0, (GLfloat) w / (GLfloat) h, 0.1, 800.0);
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 }
@@ -276,15 +313,18 @@ complex ht(float t, int n, int m) {
 // and map the results back onto the vertex plane
 void evalFFT(float t) {
     float kx, kz;
+    float lambda = -0.07f;
     int index;
-    complex htval;
+    complex htval, ht_mx, ht_mz;
     GLfloat *normals = new GLfloat[size * size * 3];
     
+    //int n_index = size*size*3 - 1;
     // Generate values and buffer
     for (int m = 0; m < N; ++m) {
         kz = 2.0f * M_PI * (m - N) / L;
         for (int n = 0; n < N; ++n) {
             kx = 2.0f * M_PI * (n - N) / L;
+            float len = sqrt(kx * kx + kz * kz);
             index = m * N + n;
 
             htval = ht(t, n, m);
@@ -300,6 +340,17 @@ void evalFFT(float t) {
             ht_slopex[index][1] = sx.b;
             ht_slopez[index][0] = sz.a;
             ht_slopez[index][1] = sz.b;
+            if (len < 0.000001f) {
+                ht_mx = complex(0.0f, 0.0f);
+                ht_mz = complex(0.0f, 0.0f);
+            } else {
+                ht_mx = htval * complex(0.0f, -kx/len);
+                ht_mz = htval * complex(0.0f, -kz/len);
+            }
+            ht_movex[index][0] = ht_mx.a;
+            ht_movex[index][1] = ht_mx.b;
+            ht_movez[index][0] = ht_mz.a;
+            ht_movez[index][1] = ht_mz.b;
         }
     }
 
@@ -307,6 +358,8 @@ void evalFFT(float t) {
     fftw_execute(p);
     fftw_execute(q);
     fftw_execute(r);
+    fftw_execute(mx);
+    fftw_execute(mz);
 
     // used to correct sign to pre translation
     int sign;
@@ -320,14 +373,21 @@ void evalFFT(float t) {
 
             sign = signs[(n + m) & 1];
 
+            vertices[index1 * 3] += ht_movex[index][0] * sign * lambda;
             vertices[index1 * 3 + 1] = out[index][0] * sign;
+            vertices[index1 * 3 + 2] += ht_movez[index][0] * sign * lambda;
 
             ht_slopex[index][0] = ht_slopex[index][0] * sign;
             ht_slopez[index][0] = ht_slopez[index][0] * sign;
 
-            normals[index1 * 3] = 0.0f - ht_slopex[index][0];
+            //normals[n_index--] = 0.0f - ht_slopex[index][0];
+            //normals[n_index--] = 1.0f;
+            //normals[n_index--] = 0.0f - ht_slopez[index][0];
+            //normals[index1 * 3] = 0.0f - ht_slopex[index][0];
+            normals[index1 * 3] = 0.0f;
             normals[index1 * 3 + 1] = 1.0f;
-            normals[index1 * 3 + 2] = 0.0f - ht_slopez[index][0];
+            //normals[index1 * 3 + 2] = 0.0f - ht_slopez[index][0];
+            normals[index1 * 3 + 2] = 0.0f;
         }
     }
     glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
@@ -406,9 +466,16 @@ void init() {
     glEnable(GL_LIGHTING);
     glEnable(GL_LIGHT0);
     glEnable(GL_NORMALIZE);
+    glEnable(GL_FOG);
+    float fogCol[3] = {0.6, 0.6, 0.6};
+    glFogfv(GL_FOG_COLOR, fogCol);
+    glFogi(GL_FOG_MODE, GL_LINEAR); // Note the 'i' after glFog - the GL_LINEAR constant is an integer.
+    glFogf(GL_FOG_START, 400.f);
+    glFogf(GL_FOG_END, 750.f);
     //glLightfv(GL_LIGHT0, GL_AMBIENT, lightKa);
     //glLightfv(GL_LIGHT0, GL_DIFFUSE, lightKd);
     glLightfv(GL_LIGHT0, GL_SPECULAR, lightKs);
+    glClearColor(0.6, 0.6, 0.6, 0.0);
     glGenBuffersARB(2, bufferIds);
 }
 
@@ -419,13 +486,12 @@ int main(int argc, char** argv)
     glutInit(&argc, argv);
 
     // Make window
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_MULTISAMPLE);
     glutCreateWindow("Ocean View");
 
     // Initialize extensions manager and set up shaders
     glewInit();
     program = loadShader("ocean");  // defined in the shader-load module
-    glUseProgram(program);
 
     // Uniform shader variables to pass UI information to the shaders
     time_var = glGetUniformLocation(program,"time");
@@ -438,6 +504,12 @@ int main(int argc, char** argv)
     ht_slopez = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);
     q = fftw_plan_dft_2d(N, N, ht_slopex, ht_slopex, FFTW_FORWARD, FFTW_ESTIMATE);
     r = fftw_plan_dft_2d(N, N, ht_slopez, ht_slopez, FFTW_FORWARD, FFTW_ESTIMATE);
+
+    ht_movex = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);
+    ht_movez = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);
+    mx = fftw_plan_dft_2d(N, N, ht_movex, ht_movex, FFTW_FORWARD, FFTW_ESTIMATE);
+    mz = fftw_plan_dft_2d(N, N, ht_movez, ht_movez, FFTW_FORWARD, FFTW_ESTIMATE);
+
 
     rng = gsl_rng_alloc(gsl_rng_taus);
     gsl_rng_set(rng, time(0));
@@ -454,6 +526,7 @@ int main(int argc, char** argv)
     glutDisplayFunc(display);
     glutIdleFunc(idle);
     glutReshapeFunc(reshape);
+    glutReshapeWindow(1024, 768);
     glutMainLoop();
     glDeleteBuffersARB(2, bufferIds);
     gsl_rng_free(rng);

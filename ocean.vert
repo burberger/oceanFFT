@@ -5,7 +5,7 @@ varying vec3 normal, halfVector;
 
 void main() {       
     vec4 pos = gl_Vertex;
-    normal = gl_Normal;
+    normal = gl_NormalMatrix * gl_Normal;
     halfVector = gl_LightSource[0].halfVector.xyz;
     // Compute the base diffuse color (not the intensity)
     diffuse = gl_FrontMaterial.diffuse * gl_LightSource[0].diffuse;

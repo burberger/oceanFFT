@@ -292,10 +292,16 @@ void evalFFT(float t) {
             in[index][0] = htval.a;
             in[index][1] = htval.b;
 
-            ht_slopex[index][0] = 0.0;
-            ht_slopex[index][1] = kx;
-            ht_slopez[index][0] = 0.0;
-            ht_slopez[index][1] = kz;
+            complex sx = complex(0, kx);
+            complex sz = complex(0, kz);
+            sx = htval * sx;
+            sz = htval * sz;
+            
+
+            ht_slopex[index][0] = sx.a;
+            ht_slopex[index][1] = sx.b;
+            ht_slopez[index][0] = sz.a;
+            ht_slopez[index][1] = sz.b;
         }
     }
 
@@ -364,8 +370,6 @@ void buildWater(int size) {
             vertices[curVert++] = -fixsize/2 + j*dist;
             vertices[curVert++] = 0;
             vertices[curVert++] = fixsize/2 - i*dist;
-            //height_norm c = heightAndNormal(vector2(vertices[curVert - 3], vertices[curVert - 1]), 6.0f);
-            //vertices[curVert - 2] = c.height.a;
         }
     }
 

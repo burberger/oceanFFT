@@ -43,8 +43,6 @@ vector2 w(-5.0, 0.0); // Wind speed
 float A = 0.0005f; // Spectrum parameter, affects output height
 int N = 128; // Frequency map size, has to be some multiple of two
 
-cFFT* fft;
-
 struct height_norm {
     complex height;
     vector3 normal;
@@ -53,6 +51,7 @@ struct height_norm {
 GLfloat* vertices;
 GLuint* indicies;
 
+// FFT variables
 fftw_complex *in, *out, *ht_slopex, *ht_slopez;
 fftw_plan p, q, r;
 
@@ -114,8 +113,6 @@ void display() {
     // Release buffers
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-    //glutSolidTeapot(1.0);
 
     glutSwapBuffers();
 }
@@ -209,7 +206,7 @@ float phillips(int n, int m) {
     Lsq = Lsq * Lsq;
 
     // Damping term for eqation 24
-    float damping = 0.0001;
+    float damping = 0.001;
     float l2 = Lsq * damping * damping;
     
     // Equation 23, damped by eq. 24
@@ -291,9 +288,7 @@ void evalFFT(float t) {
     float kx, kz;
     int index;
     complex htval;
-    complex *htld = new complex[N*N];
     float *normals = new float[size * size * 3];
-    //complex* htld = new complex[N*N];
     
     // Generate values and buffer
     for (int m = 0; m < N; ++m) {
@@ -301,7 +296,7 @@ void evalFFT(float t) {
         for (int n = 0; n < N; ++n) {
             kx = 2.0f * M_PI * (n - N) / L;
             index = m * N + n;
-            htld[index] = ht(t, n, m);
+
             htval = ht(t, n, m);
             in[index][0] = htval.a;
             in[index][1] = htval.b;
@@ -317,13 +312,6 @@ void evalFFT(float t) {
     fftw_execute(p);
     //fftw_execute(q);
     //fftw_execute(r);
-
-    //for (int m = 0; m < N; ++m) {
-        //fft->fft(htld, htld, 1, m * N);
-    //}
-    //for (int n = 0; n < N; ++n) {
-        //fft->fft(htld, htld, N, n);
-    //}
 
     // used to correct sign to pre translation
     int sign;
@@ -342,8 +330,6 @@ void evalFFT(float t) {
             normals[index1 * 3] = 0.0f - ht_slopex[index][0];
             normals[index1 * 3 + 1] = 1.0f;
             normals[index1 * 3 + 2] = 0.0f - ht_slopez[index][0];
-            //htld[index] = htld[index] * sign;
-            //vertices[index1 * 3 + 1] = htld[index].a;
         }
     }
     glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
@@ -459,8 +445,6 @@ int main(int argc, char** argv)
     q = fftw_plan_dft_2d(N, N, ht_slopex, ht_slopex, FFTW_FORWARD, FFTW_ESTIMATE);
     r = fftw_plan_dft_2d(N, N, ht_slopez, ht_slopez, FFTW_FORWARD, FFTW_ESTIMATE);
 
-    fft = new cFFT(N);
-
     rng = gsl_rng_alloc(gsl_rng_taus);
     gsl_rng_set(rng, time(0));
 
@@ -478,6 +462,10 @@ int main(int argc, char** argv)
     gsl_rng_free(rng);
     fftw_free(in);
     fftw_free(out);
-
+    fftw_free(ht_slopex);
+    fftw_free(ht_slopez);
+    fftw_destroy_plan(p);
+    fftw_destroy_plan(q);
+    fftw_destroy_plan(r);
     return 0; 
 }

@@ -4,7 +4,6 @@
 class complex {
   public:
     float a, b;
-    static unsigned int additions, multiplications;
     complex();
     complex(float a, float b);
     complex conj();
@@ -14,7 +13,6 @@ class complex {
     complex operator-() const;
     complex operator*(const float c) const;
     complex& operator=(const complex& c);
-    static void reset();
 };
 
 #endif

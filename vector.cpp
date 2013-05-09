@@ -1,3 +1,4 @@
+// Simple vector class to avoid pulling in GLM as a dependency
 #include "vector.h"
 
 vector3::vector3() : x(0.0f), y(0.0f), z(0.0f) { }

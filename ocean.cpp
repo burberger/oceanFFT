@@ -38,9 +38,9 @@ GLint theta = 0;
 int size = 129; // Number of verticies for each side of the field, determines square resolution
 float g = 9.81; // Gravity
 float fixsize = 1000.0f; // Fixed quad map length and width, regardless of square resolution
-float L = fixsize/2;
-vector2 w(-5.0, 0.0); // Wind speed
-float A = 0.0005f; // Spectrum parameter, affects output height
+float L = fixsize/16;
+vector2 w(3.0, 3.0); // Wind speed
+float A = 0.05f; // Spectrum parameter, affects output height
 int N = 128; // Frequency map size, has to be some multiple of two
 
 struct height_norm {
@@ -50,6 +50,9 @@ struct height_norm {
 
 GLfloat* vertices;
 GLuint* indicies;
+
+complex* ht0 = new complex[N*N];
+complex* ht0conj = new complex[N*N];
 
 // FFT variables
 fftw_complex *in, *out, *ht_slopex, *ht_slopez;
@@ -61,18 +64,20 @@ int height = 0;
 // Shader
 GLuint program;
 bool program_on = true;
+bool wire_on = false;
 GLint time_var;  // handles to the "time" shader variable
 float time_count = 0;   // value of the "time" shader variable
-GLfloat lightPos[] = { 1.0, 100.0, -20.0, 1.0 };
+GLfloat lightPos[] = { 1.0, 100.0, -550.0, 1.0 };
 GLfloat lightKa[] = { 1.0, 1.0, 1.0, 1.0 };
 GLfloat lightKd[] = { 1.0, 1.0, 1.0, 1.0 };
-GLfloat lightKs[] = { 1.0, 1.0, 1.0, 1.0 };
+GLfloat lightKs[] = { 0.8, 0.8, 0.8, 1.0 };
 
 // RNG seed
 gsl_rng * rng;
 
 // Card buffer IDs
 GLuint bufferIds[2];
+GLuint normalBuffer;
 
 // Display function - draw a teapot
 void display() {
@@ -86,13 +91,13 @@ void display() {
     glRotated(theta,0,1,0);
 
     // Provide both material and color so shaders can use either
-    GLfloat color[4] = {.8,.4,.1,0};
+    GLfloat color[4] = {0.13, 0.58, 0.8};
     GLfloat specular[4] = {1,1,1,0};
     glColor4fv(color);
     glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
     glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE,color);
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR,specular);
-    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS,20);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS,180);
 
 
 
@@ -105,8 +110,13 @@ void display() {
     glEnableClientState(GL_VERTEX_ARRAY);
     glVertexPointer(3, GL_FLOAT, 0, 0);
 
+    glBindBuffer(GL_ARRAY_BUFFER, normalBuffer);
+    glEnableClientState(GL_NORMAL_ARRAY);
+    glNormalPointer(GL_FLOAT, 0, (void*)0);
+
     // Draw triangle strips by index
     glDrawElements(GL_TRIANGLE_STRIP, (2*size+1)*(size - 1) - 1, GL_UNSIGNED_INT, 0);
+
 
     glDisableClientState(GL_VERTEX_ARRAY);
 
@@ -139,6 +149,14 @@ void keyboard (unsigned char key, int x, int y)
       glUseProgram(program);
     program_on = !program_on;
     break;
+  case 'w':
+    if (wire_on)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    else
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    wire_on = !wire_on;
+    break;
+
   case '+':
     zoom += 5;
     break;
@@ -217,21 +235,33 @@ float phillips(int n, int m) {
 // Generate the fourier amplitude of the height field at specified fequency vector k
 // Produces results in the complex frequency domain
 // Section 3.4
-complex ht_0(int n, int m) {
+complex gaussian_complex() {
     // produces gaussian random draws with mean 0 and std dev 1
     double a = gsl_ran_gaussian(rng, 1.0);
     double b = gsl_ran_gaussian(rng, 1.0);
+    //float a = 1;
+    //float b = 0.1;
     complex r(a, b);
     // Equation 25
-    return r * sqrt(phillips(n, m) / 2.0);
+    //return r * sqrt(phillips(n, m) / 2.0);
+    return r;
+}
+
+void compute_ht0() {
+    for (int m = 0; m < N; ++m) {
+        for (int n = 0; n < N; ++n) {
+            int index = m * N + n;
+            complex r =  gaussian_complex();
+            ht0[index] = r * sqrt(phillips(n, m)/ 2.0);
+            ht0conj[index] = (r * sqrt(phillips(-n, -m) / 2.0)).conj();
+        }
+    }
 }
 
 // Generate the fourier amplitudes of the wave field
 // Equation 26
 complex ht(float t, int n, int m) {
-    complex ht0 = ht_0(n, m);
-    complex ht0conj = ht_0(-n, -m).conj();
-    
+    int index = m * N + n;
     // complex exponential is calculated by euler's identity
     // for faster computation
     float omegat = dispersion(n, m) * t;
@@ -240,46 +270,7 @@ complex ht(float t, int n, int m) {
 
     complex c0(real, cmp);
     complex c1(real, -cmp);
-    return ht0 * c0 + ht0conj * c1;
-}
-
-// Computes a height and a normal value for an individual coordinate, and returns them
-// packed into a struct.  These are evaluated by Equation 19 for height, and
-// Equation 20 for normal
-height_norm heightAndNormal(vector2 x, float t) {
-    complex height(0.0f, 0.0f);
-    vector3 normal(0.0f, 0.0f, 0.0f);
-    
-    float kx, kz, kDx;
-    vector2 k;
-    complex c, ht_c;
-    // Discrete fourier transform over frequency plane described by vector k
-    // Equation 19
-    for (int m = -N/2; m < N/2; ++m) {
-        kz = 2.0f * M_PI * m / L;
-        for (int n = -N/2; n < N/2; ++n) {
-            // K vector is generated for this frequency point
-            kx = 2.0f * M_PI * n / L;
-            k = vector2(kx, kz);
-
-            // frequency dot location, then compute exponential
-            kDx = k * x;
-            // Euler identity resolution of exponential
-            c = complex(cos(kDx), sin(kDx));
-            // Solve full equation for this iteration of the frequency plane
-            ht_c = ht(t, n, m) * c;
-
-            // Sum the height value
-            height = height + ht_c;
-            // Sum the normal value, converted into a proper vector
-            // Equation 20
-            normal = normal + vector3(-kx * ht_c.b, 0.0f, -kz * ht_c.b);
-        }
-    }
-    height_norm hn;
-    hn.height = height;
-    hn.normal = normal;
-    return hn;
+    return ht0[index] * c0 + ht0conj[index] * c1;
 }
 
 // Using fftw, compute the fourier transform of blocks of numbers in 2 dimensions
@@ -288,7 +279,7 @@ void evalFFT(float t) {
     float kx, kz;
     int index;
     complex htval;
-    float *normals = new float[size * size * 3];
+    GLfloat *normals = new GLfloat[size * size * 3];
     
     // Generate values and buffer
     for (int m = 0; m < N; ++m) {
@@ -310,8 +301,8 @@ void evalFFT(float t) {
 
     // The secret sauce
     fftw_execute(p);
-    //fftw_execute(q);
-    //fftw_execute(r);
+    fftw_execute(q);
+    fftw_execute(r);
 
     // used to correct sign to pre translation
     int sign;
@@ -334,11 +325,14 @@ void evalFFT(float t) {
     }
     glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
     glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*size*size*3, vertices, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, normalBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*size*size*3, normals, GL_DYNAMIC_DRAW);
 }
 
 // Advance time
 void timerUpdate(int value) {
-    time_count += 0.00000002;
+    // Playing with time scale in an attempt to slow the thing down
+    time_count += 0.02;
     evalFFT(time_count);
     glutTimerFunc(20, timerUpdate, 0);
     glutPostRedisplay();
@@ -406,10 +400,10 @@ void init() {
     // Simple Lighting
     glEnable(GL_LIGHTING);
     glEnable(GL_LIGHT0);
+    glEnable(GL_NORMALIZE);
     //glLightfv(GL_LIGHT0, GL_AMBIENT, lightKa);
     //glLightfv(GL_LIGHT0, GL_DIFFUSE, lightKd);
-    //glLightfv(GL_LIGHT0, GL_SPECULAR, lightKs);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, lightKs);
     glGenBuffersARB(2, bufferIds);
 }
 
@@ -448,7 +442,10 @@ int main(int argc, char** argv)
     rng = gsl_rng_alloc(gsl_rng_taus);
     gsl_rng_set(rng, time(0));
 
+    glGenBuffers(1, &normalBuffer);
+
     init();
+    compute_ht0();
     buildWater(size);
     glutTimerFunc(20, timerUpdate, 0);
 

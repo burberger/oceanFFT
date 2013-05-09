@@ -9,8 +9,8 @@ libs: vector.cpp vector.h complex.cpp complex.h
 	$(CXX) -c fft.cpp
 
 ocean: ocean.cpp shader-load.o shader-load.h vector.o vector.h complex.o complex.h
-	$(CXX) -g -Wall ocean.cpp shader-load.o vector.o complex.o fft.o -o ocean -lGL -lGLU -lglut -lGLEW -lgsl -lfftw3 -lm
+	$(CXX) -g -Wall ocean.cpp shader-load.o vector.o complex.o fft.o -o ocean -lGL -lGLU -lglut -lGLEW -lgsl -lgslcblas -lfftw3 -lm
 
 .PHONY:
 clean :
-	rm -f ocean shader-load.o
+	rm -f ocean *.o

@@ -1,3 +1,4 @@
+#version 120
 uniform float PI = 3.14159265358979323846264;
 uniform float g = 9.81;
 uniform float A = 1.2;
@@ -181,6 +182,7 @@ void main() {
     /*height_norm hn = heightAndNormal(pos.xz, time);*/
     /*pos.y = pos.y + hn.height.x;*/
     /*normal = hn.normal;*/
+    normal = gl_Normal;
     halfVector = gl_LightSource[0].halfVector.xyz;
     // Compute the base diffuse color (not the intensity)
     diffuse = gl_FrontMaterial.diffuse * gl_LightSource[0].diffuse;

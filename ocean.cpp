@@ -26,6 +26,7 @@
 #include "shader-load.h"
 #include "vector.h"
 #include "complex.h"
+#include "fft.h"
 
 using namespace std;
 
@@ -34,13 +35,15 @@ GLint phi = 0;
 GLint theta = 0;
 
 // Constants for ocean field
-int size = 65; // Number of verticies for each side of the field, determines square resolution
+int size = 129; // Number of verticies for each side of the field, determines square resolution
 float g = 9.81; // Gravity
 float fixsize = 1000.0f; // Fixed quad map length and width, regardless of square resolution
 float L = fixsize/2;
-vector2 w(2.7, 2.6); // Wind speed
-float A = 0.005f; // Spectrum parameter, affects output height
-int N = 64; // Frequency map size, has to be some multiple of two
+vector2 w(-5.0, 0.0); // Wind speed
+float A = 0.0005f; // Spectrum parameter, affects output height
+int N = 128; // Frequency map size, has to be some multiple of two
+
+cFFT* fft;
 
 struct height_norm {
     complex height;
@@ -50,8 +53,8 @@ struct height_norm {
 GLfloat* vertices;
 GLuint* indicies;
 
-fftw_complex *in, *out;
-fftw_plan p;
+fftw_complex *in, *out, *ht_slopex, *ht_slopez;
+fftw_plan p, q, r;
 
 int zoom = 0;
 int height = 0;
@@ -176,8 +179,8 @@ float dispersion(int n, int m) {
     // Define base frequency at which to loop the dispersion
     float w0 = 2 * M_PI / 200.0f;
     // Calculate K vector from current location in 2D frequency grid
-    float kx = 2 * M_PI * (n - N) / L;
-    float kz = 2 * M_PI * (m - N) / L;
+    float kx = M_PI * (2 * n - N) / L;
+    float kz = M_PI * (2 * m - N) / L;
     // Equation 18
     return floor(sqrt(g * sqrt(kx * kx + kz * kz)) / w0) * w0;
 }
@@ -185,9 +188,9 @@ float dispersion(int n, int m) {
 // Phillips Spectrum modulated by wind speed and direction
 // Section 3.3, equation 23
 float phillips(int n, int m) {
-    vector2 k(2 * M_PI * (n - N) / L, 2 * M_PI * (m - N) / L);
+    vector2 k(M_PI * (2 * n - N)/ L, M_PI * (2 * m - N) / L);
     float k_len = k.length();
-    // Do nothing if frequency is excessively small, saves time
+    // Do nothing if frequency is excessively small
     if (k_len < 0.000001) {
         return 0.0;
     }
@@ -206,7 +209,7 @@ float phillips(int n, int m) {
     Lsq = Lsq * Lsq;
 
     // Damping term for eqation 24
-    float damping = 0.001;
+    float damping = 0.0001;
     float l2 = Lsq * damping * damping;
     
     // Equation 23, damped by eq. 24
@@ -282,24 +285,45 @@ height_norm heightAndNormal(vector2 x, float t) {
     return hn;
 }
 
+// Using fftw, compute the fourier transform of blocks of numbers in 2 dimensions
+// and map the results back onto the vertex plane
 void evalFFT(float t) {
     float kx, kz;
     int index;
     complex htval;
+    complex *htld = new complex[N*N];
+    float *normals = new float[size * size * 3];
+    //complex* htld = new complex[N*N];
     
+    // Generate values and buffer
     for (int m = 0; m < N; ++m) {
         kz = 2.0f * M_PI * (m - N) / L;
         for (int n = 0; n < N; ++n) {
             kx = 2.0f * M_PI * (n - N) / L;
             index = m * N + n;
+            htld[index] = ht(t, n, m);
             htval = ht(t, n, m);
             in[index][0] = htval.a;
             in[index][1] = htval.b;
+
+            ht_slopex[index][0] = 0.0;
+            ht_slopex[index][1] = kx;
+            ht_slopez[index][0] = 0.0;
+            ht_slopez[index][1] = kz;
         }
     }
 
     // The secret sauce
     fftw_execute(p);
+    //fftw_execute(q);
+    //fftw_execute(r);
+
+    //for (int m = 0; m < N; ++m) {
+        //fft->fft(htld, htld, 1, m * N);
+    //}
+    //for (int n = 0; n < N; ++n) {
+        //fft->fft(htld, htld, N, n);
+    //}
 
     // used to correct sign to pre translation
     int sign;
@@ -314,6 +338,12 @@ void evalFFT(float t) {
             sign = signs[(n + m) & 1];
 
             vertices[index1 * 3 + 1] = out[index][0] * sign;
+
+            normals[index1 * 3] = 0.0f - ht_slopex[index][0];
+            normals[index1 * 3 + 1] = 1.0f;
+            normals[index1 * 3 + 2] = 0.0f - ht_slopez[index][0];
+            //htld[index] = htld[index] * sign;
+            //vertices[index1 * 3 + 1] = htld[index].a;
         }
     }
     glBindBuffer(GL_ARRAY_BUFFER, bufferIds[0]);
@@ -322,7 +352,7 @@ void evalFFT(float t) {
 
 // Advance time
 void timerUpdate(int value) {
-    time_count += 0.0002;
+    time_count += 0.00000002;
     evalFFT(time_count);
     glutTimerFunc(20, timerUpdate, 0);
     glutPostRedisplay();
@@ -352,9 +382,10 @@ void buildWater(int size) {
     for (int i = 0; i < size; ++i) {
         for (int j = 0; j < size; ++j) {
             vertices[curVert++] = -fixsize/2 + j*dist;
-            vertices[curVert++] = -5;
+            vertices[curVert++] = 0;
             vertices[curVert++] = fixsize/2 - i*dist;
             //height_norm c = heightAndNormal(vector2(vertices[curVert - 3], vertices[curVert - 1]), 6.0f);
+            //vertices[curVert - 2] = c.height.a;
         }
     }
 
@@ -423,6 +454,13 @@ int main(int argc, char** argv)
     out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);
     p = fftw_plan_dft_2d(N, N, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
 
+    ht_slopex = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);
+    ht_slopez = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);
+    q = fftw_plan_dft_2d(N, N, ht_slopex, ht_slopex, FFTW_FORWARD, FFTW_ESTIMATE);
+    r = fftw_plan_dft_2d(N, N, ht_slopez, ht_slopez, FFTW_FORWARD, FFTW_ESTIMATE);
+
+    fft = new cFFT(N);
+
     rng = gsl_rng_alloc(gsl_rng_taus);
     gsl_rng_set(rng, time(0));
 
@@ -438,5 +476,8 @@ int main(int argc, char** argv)
     glutMainLoop();
     glDeleteBuffersARB(2, bufferIds);
     gsl_rng_free(rng);
+    fftw_free(in);
+    fftw_free(out);
+
     return 0; 
 }

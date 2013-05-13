@@ -469,7 +469,7 @@ void init() {
     glEnable(GL_FOG);
     float fogCol[3] = {0.6, 0.6, 0.6};
     glFogfv(GL_FOG_COLOR, fogCol);
-    glFogi(GL_FOG_MODE, GL_LINEAR); // Note the 'i' after glFog - the GL_LINEAR constant is an integer.
+    glFogi(GL_FOG_MODE, GL_LINEAR); 
     glFogf(GL_FOG_START, 400.f);
     glFogf(GL_FOG_END, 750.f);
     //glLightfv(GL_LIGHT0, GL_AMBIENT, lightKa);

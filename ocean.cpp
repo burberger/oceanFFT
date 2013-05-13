@@ -39,7 +39,7 @@ float g = 9.81; // Gravity
 float fixsize = 1200.0f; // Fixed quad map length and width, regardless of square resolution
 float L = fixsize/16;
 vector2 w(3.0, 3.0); // Wind speed
-float A = 0.06f; // Spectrum parameter, affects output height
+float A = 0.05f; // Spectrum parameter, affects output height
 int N = 128; // Frequency map size, has to be some multiple of two
 
 struct height_norm {
@@ -48,6 +48,7 @@ struct height_norm {
 };
 
 GLfloat* vertices;
+GLfloat* normals;
 GLuint* indicies;
 
 complex* ht0 = new complex[N*N];
@@ -313,10 +314,9 @@ complex ht(float t, int n, int m) {
 // and map the results back onto the vertex plane
 void evalFFT(float t) {
     float kx, kz;
-    float lambda = -0.07f;
+    float lambda = -0.05f;
     int index;
     complex htval, ht_mx, ht_mz;
-    GLfloat *normals = new GLfloat[size * size * 3];
     
     //int n_index = size*size*3 - 1;
     // Generate values and buffer
@@ -515,6 +515,7 @@ int main(int argc, char** argv)
     gsl_rng_set(rng, time(0));
 
     glGenBuffers(1, &normalBuffer);
+    normals = new GLfloat[size * size * 3];
 
     init();
     compute_ht0();

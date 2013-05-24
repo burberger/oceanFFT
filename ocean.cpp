@@ -34,13 +34,13 @@ GLint phi = 0;
 GLint theta = 0;
 
 // Constants for ocean field
-int size = 129; // Number of verticies for each side of the field, determines square resolution
+int size = 257; // Number of verticies for each side of the field, determines square resolution
 float g = 9.81; // Gravity
 float fixsize = 1200.0f; // Fixed quad map length and width, regardless of square resolution
 float L = fixsize/16;
 vector2 w(3.0, 3.0); // Wind speed
-float A = 0.05f; // Spectrum parameter, affects output height
-int N = 128; // Frequency map size, has to be some multiple of two
+float A = 0.03f; // Spectrum parameter, affects output height
+int N = 256; // Frequency map size, has to be some multiple of two
 
 struct height_norm {
     complex height;
@@ -314,7 +314,7 @@ complex ht(float t, int n, int m) {
 // and map the results back onto the vertex plane
 void evalFFT(float t) {
     float kx, kz;
-    float lambda = -0.05f;
+    float lambda = 0.02f;
     int index;
     complex htval, ht_mx, ht_mz;
     
